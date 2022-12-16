@@ -6,9 +6,11 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 using ceres::AutoDiffCostFunction;
 using ceres::CostFunction;
+using ceres::DynamicAutoDiffCostFunction;
 using ceres::Problem;
 using ceres::Solve;
 using ceres::Solver;
@@ -27,94 +29,102 @@ typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
 } // namespace Eigen
 
-struct nonline_fun {
-  // x=2,1
-  template <typename T> bool operator()(const T *const x, T *residual) const {
-    residual[1] = x[0] * x[0] + x[1] - T(5.0);
-    residual[0] = x[0] + x[1] - T(3.0);
-    residual[2] = T(4.0) * x[0] + x[1] * x[1] - T(9.0);
+struct RegressionLoss {
+  RegressionLoss(std::vector<double> X, double Y, double alfa)
+      : X_(X), Y_(Y), alfa_(alfa){};
+
+  bool operator()(const double *const a, double *residual) const {
+    for (int i = 0; i < X_.size(); ++i) {
+      residual[0] = X_[i] * a[i] - Y_;
+      residual[1] = alfa_ * a[i];
+      return true;
+    }
+  };
+
+  const std::vector<double> X_;
+  const double Y_;
+  const double alfa_;
+};
+
+struct RidgeRegressionLoss {
+  RidgeRegressionLoss(std::vector<double> x, double y, double w)
+      : x_(x), y_(y), w_(w) {}
+
+  template <typename T> bool operator()(const T *const *m, T *residual) const {
+    for (int i = 0; i < x_.size(); ++i) {
+      // residual[2 * i] = (y_ - m[0][i] * x_[i]) * (y_ - m[0][i] * x_[i]);
+      // residual[2 * i + 1] = w_ * m[0][i] * m[0][i];
+      residual[2 * i] = y_ - m[0][i] * x_[i];
+      residual[2 * i + 1] = w_ * m[0][i];
+    }
     return true;
   }
+
+private:
+  // Observations for a sample.
+  const std::vector<double> x_;
+  const double y_;
+  const double w_;
 };
 
 int main() {
-  read_lib_svm_data("/home/freeverc/Projects/Other/NO/bodyfat_scale.txt");
+  // Read data
+  std::string file_name = "../../abalone_scale.txt";
+  // std::string file_name = "../../bodyfat_scale.txt";
+  // std::string file_name = "../../housing_scale.txt";
+  std::vector<std::vector<double>> X;
+  std::vector<double> Y;
+
+  read_lib_svm_data(file_name, X, Y);
+  // print_data(X, Y);
+  double w = 10;
+
+  int n = X[0].size();
+  double **params;
+  params = new double *[1];
+  params[0] = new double[n];
+  double *init_params = new double[n];
+  for (int i = 0; i < n; ++i) {
+    params[0][i] = rand() / double(RAND_MAX);
+    init_params[i] = params[0][i];
+  }
 
   Problem problem;
-  //待优化参数
-  double y[2] = {0.0, 0.0};
-  // 3:残差数量，2:()函数第一个参数的维度，这里是x的维度
-  CostFunction *cost_function =
-      new AutoDiffCostFunction<nonline_fun, 3, 2>(new nonline_fun);
-  problem.AddResidualBlock(cost_function, NULL, y);
+  for (int i = 0; i < X.size(); ++i) {
+    DynamicAutoDiffCostFunction<RidgeRegressionLoss, 4> *cost_function =
+        new DynamicAutoDiffCostFunction<RidgeRegressionLoss, 4>(
+            new RidgeRegressionLoss(X[i], Y[i], w));
+    cost_function->AddParameterBlock(n);
+    cost_function->SetNumResiduals(2 * n);
+    problem.AddResidualBlock(cost_function, nullptr, params, 1);
+  }
+
   Solver::Options options;
+  options.minimizer_type = ceres::LINE_SEARCH;
+  // options.line_search_direction_type = ceres::STEEPEST_DESCENT;
+  // options.line_search_direction_type = ceres::NONLINEAR_CONJUGATE_GRADIENT;
+  options.line_search_direction_type = ceres::LBFGS;
   options.minimizer_progress_to_stdout = true;
+  options.linear_solver_type = ceres::DENSE_QR;
   Solver::Summary summary;
   Solve(options, &problem, &summary);
+  std::cout << summary.FullReport() << std::endl;
 
-  std::cout << summary.BriefReport() << "\n";
-  // std::chrono::system_clock::time_point t1 =
-  // std::chrono::system_clock::now(); int t = 1000000;
-  // std::chrono::duration<double> elapsed_seconds;
-  // while (t--) {
-  //   Eigen::Matrix3x4f proj_matrix = Eigen::Matrix3x4f::Random(3, 4);
-  //   const Eigen::Vector4f X = Eigen::Vector4f::Random(4, 1);
-  //   const Eigen::Vector3f proj = proj_matrix * X;
-  // }
-  // std::chrono::system_clock::time_point t2 =
-  // std::chrono::system_clock::now(); elapsed_seconds = t2 - t1; double
-  // duration = elapsed_seconds.count(); std::cout << "depth time : " <<
-  // duration << std::endl; return 0;
+  std::cout << "data item num : " << Y.size() << std::endl;
+  std::cout << "params num : " << n << std::endl;
+  std::cout << "init params : ";
+  for (int i = 0; i < n; ++i) {
+    std::cout << init_params[i] << " ";
+  }
+  std::cout << std::endl;
+
+  std::cout << "params : ";
+  for (int i = 0; i < n; ++i) {
+    std::cout << params[0][i] << " ";
+  }
+  std::cout << std::endl;
+
+  delete params[0];
+  delete params;
+  delete init_params;
 }
-
-// class LofFile{
-//   public:
-//     LofFile() {
-//         f.open("log.txt");
-//     }
-//     void shared_print(std::string s, int num) {
-//         // m_mutex.lock();
-//         std::lock_guard<std::mutex> guard(m_mutex);
-//         f << s << " " << num << std::endl;
-//         // m_mutex.unlock();
-//     }
-//   private:
-//     std::ofstream f;
-//     std::mutex m_mutex;
-// };
-// void thread_func(LofFile & log)
-// {
-//     for(int i = 0;i<100;++i) {
-//         log.shared_print("thread", i);
-//     }
-// }
-// int main()
-// {
-//     LofFile log;
-//     std::thread t1(thread_func, std::ref(log));
-//     for(int i = 0;i<100;++i) {
-//         log.shared_print("main", i);
-//     }
-//     t1.join();
-//     return 0;
-// }
-
-// std::mutex mu;
-// void shared_print(std::string s, int num)
-// {
-//     // mu.lock();
-//     std::cout<<s<<"  "<<num<<std::endl;
-//     // mu.unlock();
-// }
-
-// int main() {
-//     std::cout<<"testing"<<std::endl;
-
-//     std::thread t1(thread_func, "thread");
-//     for(int i = 0;i<100;++i) {
-//         shared_print("main", i);
-//     }
-//     t1.join();
-//     shared_print("main end", -1);
-//     return 0;
-// }
