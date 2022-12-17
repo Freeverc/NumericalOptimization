@@ -67,3 +67,24 @@ void print_data(std::vector<std::vector<double>> &X, std::vector<double> &Y) {
     std::cout << std::endl;
   }
 }
+void check_data(std::vector<std::vector<double>> &X, std::vector<double> &Y,
+                std::vector<double> &params) {
+  double mean_error = 0, mean_y = 0;
+  for (int i = 0; i < X.size(); ++i) {
+    double y = 0;
+    for (int j = 0; j < X[i].size(); ++j) {
+      y += params[j] * X[i][j];
+    }
+    mean_y += Y[i];
+    y += params[X[i].size()];
+    // std::cout << i << ": " << Y[i] << " " << y << std::endl;
+    mean_error += std::abs(Y[i] - y);
+  }
+
+  mean_error /= X.size();
+  mean_y /= X.size();
+  double error_rate = mean_error / mean_y;
+
+  std::cout << "Total Data :" << X.size() << ", mean : " << mean_error
+            << ", error_rate: " << error_rate << std::endl;
+}
