@@ -67,8 +67,9 @@ void print_data(std::vector<std::vector<double>> &X, std::vector<double> &Y) {
     std::cout << std::endl;
   }
 }
-void check_data(std::vector<std::vector<double>> &X, std::vector<double> &Y,
-                std::vector<double> &params) {
+void check_data(const std::vector<std::vector<double>> &X,
+                const std::vector<double> &Y,
+                const std::vector<double> &params) {
   double mean_error = 0, mean_y = 0;
   for (int i = 0; i < X.size(); ++i) {
     double y = 0;

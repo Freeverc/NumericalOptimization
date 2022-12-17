@@ -13,7 +13,7 @@ struct Options {
   bool use_ceres = false;
   OptimizationMethod method = GRADIENT_DECENT;
   int iter = 2000;
-  double lr = 0.002;
+  double lr = 0.0001;
   int num_params = 15;
   const double regularization_weight = 1;
   double decay_rate = 0.8;

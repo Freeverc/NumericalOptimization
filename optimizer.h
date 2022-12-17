@@ -61,6 +61,8 @@ public:
             Options options)
       : X_(x), Y_(y), options_(options) {
     params_.resize(options_.num_params);
+    cost_.reserve(options_.iter + 1);
+    lr_.reserve(options_.iter + 1);
   };
 
   ~Optimizer(){};
@@ -85,12 +87,16 @@ public:
 
   void ShowResult();
 
+  void SaveLog(const std::string &file_name);
+
 private:
   const std::vector<std::vector<double>> X_;
   const std::vector<double> Y_;
   std::vector<double> params_;
   std::vector<double> init_params_;
   Options options_;
+  std::vector<double> cost_;
+  std::vector<double> lr_;
 };
 
 void Optimizer::Init() {
@@ -140,6 +146,7 @@ void Optimizer::UpdateGradientDescent() {
   }
 
   std::cout << cost << " ";
+  cost_.push_back(cost);
 }
 
 void Optimizer::UpdateConjugateGradient() {
@@ -179,6 +186,8 @@ void Optimizer::SolveProblem() {
     if (i % 50 == 0) {
       options_.lr *= options_.decay_rate;
     }
+
+    lr_.push_back(options_.lr);
   }
 }
 
@@ -207,16 +216,27 @@ void Optimizer::SolveByCeres() {
   ceres_options.minimizer_type = ceres::LINE_SEARCH;
   ceres_options.max_num_iterations = 1000;
   ceres_options.min_line_search_step_contraction = 0.6;
-  ceres_options.line_search_direction_type = ceres::STEEPEST_DESCENT;
-  // ceres_options.line_search_direction_type =
-  //     ceres::NONLINEAR_CONJUGATE_GRADIENT;
-  // ceres_options.line_search_direction_type = ceres::LBFGS;
-  // ceres_options.line_search_direction_type = ceres::BFGS;
+  if (options_.method == OptimizationMethod::GRADIENT_DECENT) {
+
+    ceres_options.line_search_direction_type = ceres::STEEPEST_DESCENT;
+  } else if (options_.method == OptimizationMethod::CONJUGATE_GRADIENT) {
+
+    ceres_options.line_search_direction_type =
+        ceres::NONLINEAR_CONJUGATE_GRADIENT;
+  } else if (options_.method == OptimizationMethod::QUASI_NEWTON) {
+    // ceres_options.line_search_direction_type = ceres::LBFGS;
+    ceres_options.line_search_direction_type = ceres::BFGS;
+  }
+
   ceres_options.minimizer_progress_to_stdout = true;
   // ceres_options.linear_solver_type = ceres::DENSE_QR;
   Solver::Summary summary;
   Solve(ceres_options, &problem, &summary);
-  std::cout << summary.FullReport() << std::endl;
+  std::cout << summary.BriefReport() << std::endl;
+  for (int i = 0; i < summary.iterations.size(); ++i) {
+    cost_.push_back(summary.iterations[i].cost);
+    lr_.push_back(summary.iterations[i].step_size);
+  }
 
   for (int i = 0; i < n; ++i) {
     params_[i] = params_ptr[0][i];
@@ -246,4 +266,13 @@ void Optimizer::ShowResult() {
     std::cout << params_[i] << " ";
   }
   std::cout << std::endl;
+}
+
+void Optimizer::SaveLog(const std::string &file_name) {
+  std::ofstream log_ofs(file_name);
+  for (int i = 0; i < cost_.size(); ++i) {
+    log_ofs << i << " " << cost_[i] << " " << lr_[i] << "\n";
+  }
+
+  log_ofs.close();
 }
